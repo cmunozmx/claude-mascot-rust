@@ -106,9 +106,22 @@ enum Mood {
     Happy,
 }
 
+/// Status of one herdr-managed agent, as sent by the host in `AGENTS:<states>`.
+#[derive(PartialEq, Clone, Copy)]
+enum AgentState {
+    Blocked, // B: waiting on the user
+    Working, // W
+    Idle,    // I: idle or done
+    Unknown, // U
+}
+
+const AGENT_CAP: usize = 32;
+
 struct Mascot {
     mood: Mood,
     agents: u8,
+    herdr: [AgentState; AGENT_CAP],
+    herdr_count: usize,
     session_active: bool,
     muted: bool,
     happiness: i32, // 0..100
@@ -124,6 +137,8 @@ impl Mascot {
         Self {
             mood: Mood::Idle,
             agents: 0,
+            herdr: [AgentState::Unknown; AGENT_CAP],
+            herdr_count: 0,
             session_active: false,
             muted: false,
             happiness: 70,
@@ -137,6 +152,20 @@ impl Mascot {
 
     /// Returns a short beep "recipe" (freq_hz, times) to play, if any.
     fn handle_command(&mut self, cmd: &str) -> Option<[(u32, u32); 2]> {
+        // Full agent-status snapshot from the host; it is background state, so
+        // it must not wake the session, reset the sleep timer, or beep.
+        if let Some(list) = cmd.strip_prefix("AGENTS:") {
+            self.herdr_count = list.len().min(AGENT_CAP);
+            for (slot, b) in self.herdr.iter_mut().zip(list.bytes()) {
+                *slot = match b {
+                    b'B' => AgentState::Blocked,
+                    b'W' => AgentState::Working,
+                    b'I' => AgentState::Idle,
+                    _ => AgentState::Unknown,
+                };
+            }
+            return None;
+        }
         self.frames_since_event = 0;
         // SESSION_START is missed if the board or daemon came up after the
         // session began, so any real activity means a session is live.
@@ -248,7 +277,11 @@ const BODY: Rgb565 = Rgb565::new(27, 29, 10); // Clawd orange, ~(217,119,87)
 const BODY_DIM: Rgb565 = Rgb565::new(18, 30, 13);
 const TEXT: Rgb565 = Rgb565::new(30, 57, 27);
 const HEART: Rgb565 = Rgb565::new(27, 17, 11);
-const AGENT: Rgb565 = Rgb565::new(11, 42, 18);
+const DOT_RED: Rgb565 = Rgb565::new(31, 15, 7); // blocked, ~(255,60,60)
+const DOT_RED_DIM: Rgb565 = Rgb565::new(15, 7, 3);
+const DOT_GREEN: Rgb565 = Rgb565::new(7, 55, 11); // working, ~(60,220,90)
+const DOT_YELLOW: Rgb565 = Rgb565::new(31, 50, 5); // idle / done, ~(250,200,40)
+const DOT_GRAY: Rgb565 = Rgb565::new(13, 27, 13); // unknown
 const BANNER_BG: Rgb565 = Rgb565::new(11, 32, 15);
 
 struct DotBuf {
@@ -328,7 +361,7 @@ fn compose(buf: &mut DotBuf, m: &Mascot, frame: u32) {
     if m.banner_frames > 0 {
         draw_banner(buf, m);
     } else {
-        draw_agent_row(buf, m, frame);
+        draw_herdr_dots(buf, m, frame);
     }
 }
 
@@ -463,39 +496,45 @@ fn draw_clawd(buf: &mut DotBuf, m: &Mascot, frame: u32, bob: i32) {
     }
 }
 
-fn draw_agent_row(buf: &mut DotBuf, m: &Mascot, frame: u32) {
-    const SIZE: i32 = 4;
-    const PITCH: i32 = SIZE + 1;
-    // leave room for the "+N" overflow label
-    const MAX_SHOWN: u8 = ((COLS as i32 - 2 * FONT_W) / PITCH) as u8;
-    let shown = m.agents.min(MAX_SHOWN);
-    let label_w = if m.agents > MAX_SHOWN { 2 * FONT_W } else { 0 };
-    let start_x = (COLS as i32 - shown as i32 * PITCH - label_w) / 2;
+/// One LED per herdr agent in the footer, in host order. Dots are 2x2 with a
+/// 1-dot gap and wrap onto more rows; with more agents than that holds they
+/// shrink to single dots (AGENT_CAP always fits). Blocked agents pulse.
+fn draw_herdr_dots(buf: &mut DotBuf, m: &Mascot, frame: u32) {
+    let n = m.herdr_count;
+    if n == 0 {
+        return;
+    }
+    let capacity = |size: i32, pitch: i32| {
+        let per_row = (COLS as i32 - 2) / pitch;
+        let max_rows = (FOOTER_H + pitch - size) / pitch;
+        (per_row, per_row * max_rows)
+    };
+    let (mut size, mut pitch) = (2, 3);
+    if n as i32 > capacity(size, pitch).1 {
+        (size, pitch) = (1, 2);
+    }
+    let (per_row, _) = capacity(size, pitch);
+    let rows = (n as i32 + per_row - 1) / per_row;
+    let top = FOOTER_Y + (FOOTER_H - (rows * pitch - (pitch - size))) / 2;
+    let pulse_dim = (frame / 8) % 2 == 1;
 
-    for i in 0..shown {
-        let phase = frame as f32 * 0.1 + i as f32 * 0.8;
-        let bounce = (libm::fabsf(libm::sinf(phase)) * 2.0) as i32;
-        let (x, y) = (start_x + i as i32 * PITCH, FOOTER_Y + 2 - bounce);
-        for dy in 0..SIZE {
-            for dx in 0..SIZE {
-                let corner = (dx == 0 || dx == SIZE - 1) && (dy == 0 || dy == SIZE - 1);
-                if !corner {
-                    buf.set(x + dx, y + dy, AGENT);
-                }
+    for i in 0..n {
+        let (row, col) = (i as i32 / per_row, i as i32 % per_row);
+        let in_row = (n as i32 - row * per_row).min(per_row);
+        let left = (COLS as i32 - (in_row * pitch - (pitch - size))) / 2;
+        let color = match m.herdr[i] {
+            AgentState::Blocked if pulse_dim => DOT_RED_DIM,
+            AgentState::Blocked => DOT_RED,
+            AgentState::Working => DOT_GREEN,
+            AgentState::Idle => DOT_YELLOW,
+            AgentState::Unknown => DOT_GRAY,
+        };
+        let (x, y) = (left + col * pitch, top + row * pitch);
+        for dy in 0..size {
+            for dx in 0..size {
+                buf.set(x + dx, y + dy, color);
             }
         }
-    }
-    if m.agents > MAX_SHOWN {
-        let style = MonoTextStyle::new(&FONT_4X6, TEXT);
-        let mut s: HString<8> = HString::new();
-        let _ = write!(s, "+{}", m.agents - MAX_SHOWN);
-        let _ = Text::with_baseline(
-            &s,
-            Point::new(start_x + shown as i32 * PITCH, FOOTER_Y + 1),
-            style,
-            Baseline::Top,
-        )
-        .draw(buf);
     }
 }
 
