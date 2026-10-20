@@ -162,3 +162,58 @@ own examples, so these are the parts least likely to have drifted.
 If you get stuck, `cargo doc -p usb-device -p wio_terminal -p heapless
 --open` opens the exact API surface for the versions Cargo actually
 resolved for you, which is more reliable than anything written here.
+
+
+## Clawdagotchi Statuses
+
+### Overview
+
+The clawdagotchi has several statuses, they depend on the statuses of the herdr agents running.
+![Overview](static/overview.png)
+
+### Sleeping
+
+The clawdagotchi has does not have a session active it goes to sleep after a rough day vibing
+
+![Sleeping](static/01-sleeping.png)
+
+
+### Idle
+
+When the clwadagotchi has a session but is waiting for the agents to think abpout something
+![Idle](static/02-idle.png)
+
+### Thinking
+
+When it recieves a prompt and it's processing it, it starts to think to solve your prompt
+![Thinking](static/03-thinking.png)
+
+
+### Busy
+
+When our little friend is working it is happy to do so:
+![Busy working A](static/04-busy-a.png)
+![Busy Working B](static/04-busy-b.png)
+
+### Happy
+
+You use the WIO terminal button to pet it, it makes it happy:
+![Happy](static/05-happy.png)
+
+### Notifiy
+
+When the Agent sends a notification it display in the lower banner:
+![Notification](static/06-notify.png)
+
+### Paralell Agents
+
+If you have more than one agent working, the display shows little squares for each
+![Agents_working](static/07-herdr-agents.png)
+![Agents_several_working](static/08-herdr-many-agents.png)
+
+### Sad and Blinking
+
+Your little friend can become sad if you don't pet it regularly, and if it's awaiting for new things to think about it freshes it's eyes by blinking
+
+![Sad](static/09-low-happiness.png)
+![Blinking](static/10-blink.png)
