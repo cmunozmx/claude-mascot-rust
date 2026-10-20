@@ -157,7 +157,11 @@ impl Mascot {
         } else if cmd == "AGENT_STOP" {
             self.agents = self.agents.saturating_sub(1);
             if self.agents == 0 {
-                self.mood = if self.session_active { Mood::Idle } else { Mood::Sleeping };
+                self.mood = if self.session_active {
+                    Mood::Idle
+                } else {
+                    Mood::Sleeping
+                };
             }
         } else if cmd == "STOP" {
             self.happiness = (self.happiness + 8).min(100);
@@ -221,10 +225,18 @@ impl Mascot {
 // coordinates) and `flush` then sends only the dots that changed since the
 // previous frame, so nothing is cleared or redrawn wholesale.
 
-const DOT_PX: usize = 5;
-const LIT_PX: usize = 4;
-const COLS: usize = 320 / DOT_PX; // 64
-const ROWS: usize = 240 / DOT_PX; // 48
+const DOT_PX: usize = 8;
+const LIT_PX: usize = 7;
+const COLS: usize = 320 / DOT_PX; // 40 at 8px dots
+const ROWS: usize = 240 / DOT_PX; // 30 at 8px dots
+const _: () = assert!(LIT_PX <= DOT_PX);
+
+// Layout, all in dots and derived from the grid size.
+const FONT_W: i32 = 4;
+const FONT_H: i32 = 6;
+const HEADER_H: i32 = FONT_H;
+const FOOTER_H: i32 = FONT_H + 1; // agent row / banner strip
+const FOOTER_Y: i32 = ROWS as i32 - FOOTER_H;
 
 const OFF: Rgb565 = Rgb565::BLACK;
 const BODY: Rgb565 = Rgb565::new(27, 29, 10); // Clawd orange, ~(217,119,87)
@@ -240,7 +252,9 @@ struct DotBuf {
 
 impl DotBuf {
     const fn new() -> Self {
-        Self { dots: [OFF; COLS * ROWS] }
+        Self {
+            dots: [OFF; COLS * ROWS],
+        }
     }
 
     fn set(&mut self, x: i32, y: i32, c: Rgb565) {
@@ -297,11 +311,13 @@ fn compose(buf: &mut DotBuf, m: &Mascot, frame: u32) {
     buf.dots.fill(OFF);
     draw_header(buf, m);
 
+    // bob amplitude is in sprite cells, so it scales with the sprite
     let bob = match m.mood {
         Mood::Busy => (libm::sinf(frame as f32 * 0.35) * 1.5) as i32,
         Mood::Happy => (libm::sinf(frame as f32 * 0.5) * 2.0) as i32,
         _ => (libm::sinf(frame as f32 * 0.08) * 1.5) as i32,
-    };
+    } * SCALE
+        / 2;
     draw_clawd(buf, m, frame, bob);
 
     if m.banner_frames > 0 {
@@ -315,11 +331,11 @@ fn draw_header(buf: &mut DotBuf, m: &Mascot) {
     let style = MonoTextStyle::new(&FONT_4X6, TEXT);
     let mut s: HString<16> = HString::new();
     if !m.session_active {
-        let _ = write!(s, "asleep");
+        let _ = write!(s, "sleep");
     } else if m.agents > 0 {
-        let _ = write!(s, "{} agent{}", m.agents, if m.agents == 1 { "" } else { "s" });
+        let _ = write!(s, "{}ag", m.agents);
     } else if m.mood == Mood::Thinking {
-        let _ = write!(s, "thinking");
+        let _ = write!(s, "think");
     } else {
         let _ = write!(s, "idle");
     }
@@ -329,16 +345,18 @@ fn draw_header(buf: &mut DotBuf, m: &Mascot) {
     let mut h: HString<4> = HString::new();
     let _ = write!(h, "{}", m.happiness);
     let heart_style = MonoTextStyle::new(&FONT_4X6, HEART);
-    let x = 56 - h.len() as i32 * 4;
+    let x = COLS as i32 - HEART_W - 1 - h.len() as i32 * FONT_W;
     let _ = Text::with_baseline(&h, Point::new(x, 0), heart_style, Baseline::Top).draw(buf);
-    draw_heart(buf, 57, 0);
+    draw_heart(buf, COLS as i32 - HEART_W, 0);
 }
 
+const HEART_W: i32 = 5;
+
 fn draw_heart(buf: &mut DotBuf, x: i32, y: i32) {
-    const ROWS7: [u8; 6] = [0b0110110, 0b1111111, 0b1111111, 0b0111110, 0b0011100, 0b0001000];
-    for (r, bits) in ROWS7.iter().enumerate() {
-        for c in 0..7 {
-            if bits & (0b1000000 >> c) != 0 {
+    const ROWS5: [u8; 5] = [0b01010, 0b11111, 0b11111, 0b01110, 0b00100];
+    for (r, bits) in ROWS5.iter().enumerate() {
+        for c in 0..HEART_W {
+            if bits & (0b10000 >> c) != 0 {
                 buf.set(x + c, y + r as i32, HEART);
             }
         }
@@ -352,14 +370,25 @@ fn draw_heart(buf: &mut DotBuf, x: i32, y: i32) {
 //   eyes   1x3 slits carved out of the body at cols 6 and 17, rows 3..=5
 const SPRITE_W: i32 = 24;
 const SPRITE_H: i32 = 15;
-const SCALE: i32 = 2;
+// Dots per sprite cell: the largest integer scale that leaves a margin.
+const SCALE: i32 = if COLS as i32 / (SPRITE_W + 8) > 0 {
+    COLS as i32 / (SPRITE_W + 8)
+} else {
+    1
+};
+const SPRITE_PX_W: i32 = SPRITE_W * SCALE;
+const SPRITE_PX_H: i32 = SPRITE_H * SCALE;
 
 fn clawd_lit(x: i32, y: i32, arms_up: bool, legs_alt: bool) -> bool {
     let body = (3..=20).contains(&x) && (0..=8).contains(&y);
     let (a0, a1) = if arms_up { (5, 7) } else { (6, 8) };
     let arms = (a0..=a1).contains(&y) && (x <= 2 || x >= 21);
     let legs = (9..=14).contains(&y) && {
-        let xs = if legs_alt { [3, 4, 6, 7, 16, 17, 19, 20] } else { [4, 5, 7, 8, 15, 16, 18, 19] };
+        let xs = if legs_alt {
+            [3, 4, 6, 7, 16, 17, 19, 20]
+        } else {
+            [4, 5, 7, 8, 15, 16, 18, 19]
+        };
         xs.contains(&x)
     };
     body || arms || legs
@@ -376,7 +405,9 @@ fn is_eye(x: i32, y: i32, eye: &[u8; 3]) -> bool {
 }
 
 fn draw_clawd(buf: &mut DotBuf, m: &Mascot, frame: u32, bob: i32) {
-    let (ox, oy) = (8, 9 + bob);
+    // centred horizontally, and vertically between header and footer
+    let ox = (COLS as i32 - SPRITE_PX_W) / 2;
+    let oy = HEADER_H + (FOOTER_Y - HEADER_H - SPRITE_PX_H) / 2 + bob;
     let body = if m.happiness < 25 { BODY_DIM } else { BODY };
     let step = m.mood == Mood::Busy && (frame / 3) % 2 == 1; // scurry while agents run
     let blink = frame % 100 < 3;
@@ -388,14 +419,22 @@ fn draw_clawd(buf: &mut DotBuf, m: &Mascot, frame: u32, bob: i32) {
     } else {
         [0b010, 0b010, 0b010]
     };
-    let shift = if m.mood == Mood::Thinking { (libm::sinf(frame as f32 * 0.25) * 1.5) as i32 } else { 0 };
+    let shift = if m.mood == Mood::Thinking {
+        (libm::sinf(frame as f32 * 0.25) * 1.5) as i32
+    } else {
+        0
+    };
 
     for y in 0..SPRITE_H {
         for x in 0..SPRITE_W {
             if !clawd_lit(x, y, step, step) {
                 continue;
             }
-            let c = if is_eye(x - shift, y, &eye) { OFF } else { body };
+            let c = if is_eye(x - shift, y, &eye) {
+                OFF
+            } else {
+                body
+            };
             for dy in 0..SCALE {
                 for dx in 0..SCALE {
                     buf.set(ox + x * SCALE + dx, oy + y * SCALE + dy, c);
@@ -405,12 +444,13 @@ fn draw_clawd(buf: &mut DotBuf, m: &Mascot, frame: u32, bob: i32) {
     }
 
     if m.mood == Mood::Sleeping {
-        let style = MonoTextStyle::new(&FONT_4X6, OFF);
-        let _ = Text::with_baseline("Zzz", Point::new(ox + 28, oy + 3), style, Baseline::Top).draw(buf);
+        let style = MonoTextStyle::new(&FONT_4X6, TEXT);
+        let _ = Text::with_baseline("Zz", Point::new(ox + SPRITE_PX_W, oy), style, Baseline::Top)
+            .draw(buf);
     }
     if m.mood == Mood::Thinking {
         for i in 0..(frame / 8) % 4 {
-            let x = 56 + 3 * i as i32;
+            let x = ox + SPRITE_PX_W + 3 * i as i32;
             for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
                 buf.set(x + dx, oy + 2 + dy, TEXT);
             }
@@ -419,18 +459,21 @@ fn draw_clawd(buf: &mut DotBuf, m: &Mascot, frame: u32, bob: i32) {
 }
 
 fn draw_agent_row(buf: &mut DotBuf, m: &Mascot, frame: u32) {
-    const MAX_SHOWN: u8 = 6;
-    const PITCH: i32 = 6;
+    const SIZE: i32 = 4;
+    const PITCH: i32 = SIZE + 1;
+    // leave room for the "+N" overflow label
+    const MAX_SHOWN: u8 = ((COLS as i32 - 2 * FONT_W) / PITCH) as u8;
     let shown = m.agents.min(MAX_SHOWN);
-    let start_x = (COLS as i32 - shown as i32 * PITCH) / 2;
+    let label_w = if m.agents > MAX_SHOWN { 2 * FONT_W } else { 0 };
+    let start_x = (COLS as i32 - shown as i32 * PITCH - label_w) / 2;
 
     for i in 0..shown {
         let phase = frame as f32 * 0.1 + i as f32 * 0.8;
         let bounce = (libm::fabsf(libm::sinf(phase)) * 2.0) as i32;
-        let (x, y) = (start_x + i as i32 * PITCH, 43 - bounce);
-        for dy in 0..4 {
-            for dx in 0..4 {
-                let corner = (dx == 0 || dx == 3) && (dy == 0 || dy == 3);
+        let (x, y) = (start_x + i as i32 * PITCH, FOOTER_Y + 2 - bounce);
+        for dy in 0..SIZE {
+            for dx in 0..SIZE {
+                let corner = (dx == 0 || dx == SIZE - 1) && (dy == 0 || dy == SIZE - 1);
                 if !corner {
                     buf.set(x + dx, y + dy, AGENT);
                 }
@@ -441,23 +484,28 @@ fn draw_agent_row(buf: &mut DotBuf, m: &Mascot, frame: u32) {
         let style = MonoTextStyle::new(&FONT_4X6, TEXT);
         let mut s: HString<8> = HString::new();
         let _ = write!(s, "+{}", m.agents - MAX_SHOWN);
-        let _ = Text::with_baseline(&s, Point::new(start_x + shown as i32 * PITCH, 42), style, Baseline::Top)
-            .draw(buf);
+        let _ = Text::with_baseline(
+            &s,
+            Point::new(start_x + shown as i32 * PITCH, FOOTER_Y + 1),
+            style,
+            Baseline::Top,
+        )
+        .draw(buf);
     }
 }
 
 fn draw_banner(buf: &mut DotBuf, m: &Mascot) {
-    for y in 41..ROWS as i32 {
-        for x in 2..COLS as i32 - 2 {
+    for y in FOOTER_Y..ROWS as i32 {
+        for x in 1..COLS as i32 - 1 {
             buf.set(x, y, BANNER_BG);
         }
     }
     let mut s: HString<16> = HString::new();
-    for ch in m.banner.chars().take(14) {
+    for ch in m.banner.chars().take((COLS as i32 / FONT_W - 1) as usize) {
         let _ = s.push(ch);
     }
     let style = MonoTextStyle::new(&FONT_4X6, Rgb565::WHITE);
-    let _ = Text::with_baseline(&s, Point::new(4, 42), style, Baseline::Top).draw(buf);
+    let _ = Text::with_baseline(&s, Point::new(2, FOOTER_Y + 1), style, Baseline::Top).draw(buf);
 }
 
 /// Bit-bang the piezo buzzer at `freq_hz` for `dur_ms`, using core-clock
@@ -495,7 +543,13 @@ fn main() -> ! {
 
     let (mut display, _backlight) = sets
         .display
-        .init(&mut clocks, peripherals.sercom7, &mut peripherals.mclk, 58.MHz(), &mut delay)
+        .init(
+            &mut clocks,
+            peripherals.sercom7,
+            &mut peripherals.mclk,
+            58.MHz(),
+            &mut delay,
+        )
         .unwrap();
 
     // The BSP initializes the panel as LandscapeFlipped; Landscape is the 180° turn.
@@ -514,7 +568,11 @@ fn main() -> ! {
 
     // ---- USB CDC serial (interrupt-driven) ----
     let bus_allocator = unsafe {
-        USB_ALLOCATOR = Some(sets.usb.usb_allocator(peripherals.usb, &mut clocks, &mut peripherals.mclk));
+        USB_ALLOCATOR = Some(sets.usb.usb_allocator(
+            peripherals.usb,
+            &mut clocks,
+            &mut peripherals.mclk,
+        ));
         USB_ALLOCATOR.as_ref().unwrap()
     };
     unsafe {
