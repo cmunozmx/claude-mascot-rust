@@ -138,6 +138,11 @@ impl Mascot {
     /// Returns a short beep "recipe" (freq_hz, times) to play, if any.
     fn handle_command(&mut self, cmd: &str) -> Option<[(u32, u32); 2]> {
         self.frames_since_event = 0;
+        // SESSION_START is missed if the board or daemon came up after the
+        // session began, so any real activity means a session is live.
+        if cmd != "SESSION_END" && cmd != "PING" {
+            self.session_active = true;
+        }
         if cmd == "SESSION_START" {
             self.session_active = true;
             self.agents = 0;
