@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 serialport = "4"
+serde_json = "1"
 
 [[bin]]
 name = "mascot-daemon"

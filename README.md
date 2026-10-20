@@ -93,6 +93,36 @@ Notes:
 - Don't run a manual `mascot-daemon` at the same time; it holds the port and the
   UDP socket (`127.0.0.1:8765`).
 
+### herdr integration (optional)
+
+If you manage your agents with [herdr](https://herdr.dev), the daemon shows all
+of them on the board as a row of dots under the mascot, one per agent. It
+subscribes to herdr's event socket (`~/.config/herdr/herdr.sock`, or
+`$HERDR_SOCKET_PATH`), so there is no polling and only read-only calls are made.
+herdr is optional: while it isn't running the daemon retries quietly (1s backing
+off to 10s, one log line per change) and everything else works as before.
+
+| herdr status | dot |
+|---|---|
+| `blocked` (waiting for you) | red |
+| `working` | green |
+| `idle` / `done` | yellow |
+| `unknown` | gray |
+
+The daemon sends one serial line with the full state, only when it changes (and
+again after every serial reconnect, since the board forgets it when it resets):
+
+```
+AGENTS:BBIIIIIIW      # B blocked, W working, I idle/done, U unknown; one char per agent
+AGENTS:               # no agents
+```
+
+Agents keep their position (order of first sight, max 32), so dots don't jump
+around as statuses change. To check what would be sent without touching the
+board, run `mascot-daemon --herdr-dry-run`: it prints the `AGENTS:` lines to
+stdout and opens neither the serial port nor the UDP socket, so it is safe to run
+next to the service.
+
 ## 3. Wire up the hooks
 
 Merge `claude_settings_hooks.json` into `~/.claude/settings.json` the same
