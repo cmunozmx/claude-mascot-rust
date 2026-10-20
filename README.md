@@ -62,6 +62,37 @@ Run the daemon whenever you're using Claude Code:
 ./target/release/mascot-daemon /dev/ttyACM0    # or explicit
 ```
 
+### Run the daemon as a service (starts at boot)
+
+A systemd *user* service keeps the daemon running and restarts it if it exits
+(e.g. the board wasn't plugged in yet). Run from the repo root:
+
+```bash
+cd host && cargo build --release && cd ..
+install -m 755 host/target/release/mascot-daemon ~/.claude-mascot/
+mkdir -p ~/.config/systemd/user
+cp host/mascot-daemon.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now mascot-daemon
+```
+
+To start at boot without logging in, enable lingering once:
+`sudo loginctl enable-linger $USER`.
+
+Check it with `systemctl --user status mascot-daemon` and
+`journalctl --user -u mascot-daemon -f` (look for `connected to ...`). After
+rebuilding, re-run the `install` line and `systemctl --user restart mascot-daemon`.
+
+Notes:
+- Your user needs access to the serial port: `sudo usermod -aG dialout $USER`
+  (or `gpasswd -a`), then log out and back in. With lingering enabled, reboot or
+  `sudo systemctl restart user@$(id -u)` so the service manager picks up the group.
+- The unit passes `/dev/serial/by-id/usb-Claude_Mascot_Claude_Agent_Mascot_MASCOT1-if00`
+  explicitly because the firmware's USB name ("Claude Agent Mascot") no longer
+  matches the daemon's auto-detect hints. Check yours with `ls /dev/serial/by-id/`.
+- Don't run a manual `mascot-daemon` at the same time; it holds the port and the
+  UDP socket (`127.0.0.1:8765`).
+
 ## 3. Wire up the hooks
 
 Merge `claude_settings_hooks.json` into `~/.claude/settings.json` the same

@@ -1,0 +1,13 @@
+[Unit]
+Description=Claude Mascot daemon (forwards hook events to the Wio Terminal)
+StartLimitIntervalSec=0
+
+[Service]
+# Stable path for the board; survives ttyACM0 becoming ttyACM1 after a replug.
+# The daemon retries opening it every 3s, so the board may be plugged in later.
+ExecStart=%h/.claude-mascot/mascot-daemon /dev/serial/by-id/usb-Claude_Mascot_Claude_Agent_Mascot_MASCOT1-if00
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
