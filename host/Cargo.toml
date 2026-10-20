@@ -1,0 +1,15 @@
+[package]
+name = "claude-mascot-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serialport = "4"
+
+[[bin]]
+name = "mascot-daemon"
+path = "src/bin/daemon.rs"
+
+[[bin]]
+name = "mascot-hook"
+path = "src/bin/hook.rs"

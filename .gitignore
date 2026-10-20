@@ -1,0 +1,12 @@
+# Rust build output (firmware/target, host/target)
+target/
+
+# Vendored / downloaded dependencies
+vendor/
+
+# Editor and OS files
+*.rs.bk
+*.swp
+.DS_Store
+.idea/
+.vscode/

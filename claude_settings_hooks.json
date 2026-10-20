@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "~/.claude-mascot/mascot-hook SESSION_START" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "~/.claude-mascot/mascot-hook SESSION_END" }] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "~/.claude-mascot/mascot-hook PROMPT" }] }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [{ "type": "command", "command": "~/.claude-mascot/mascot-hook AGENT_START" }]
+      }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "~/.claude-mascot/mascot-hook AGENT_STOP" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "~/.claude-mascot/mascot-hook STOP" }] }
+    ],
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "~/.claude-mascot/mascot-hook NOTIFY" }] }
+    ]
+  }
+}

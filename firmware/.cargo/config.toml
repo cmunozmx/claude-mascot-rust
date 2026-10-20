@@ -1,0 +1,20 @@
+[build]
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+rustflags = ["-C", "link-arg=-Tlink.x"]
+
+# After building, flash with bossac (device must be in bootloader mode --
+# double-tap the reset button on the bottom of the Wio Terminal):
+#
+#   rustup target add thumbv7em-none-eabihf
+#   cargo build --release
+#   arm-none-eabi-objcopy -O binary \
+#     target/thumbv7em-none-eabihf/release/claude-mascot-fw \
+#     target/thumbv7em-none-eabihf/release/claude-mascot-fw.bin
+#   bossac -i -d -v --port=<PORT> -U -i --offset=0x4000 \
+#     -w -v target/thumbv7em-none-eabihf/release/claude-mascot-fw.bin -R
+#
+# Or, simpler, install cargo-hf2 and:
+#   cargo install cargo-hf2
+#   cargo hf2 --release --vid 0x2886 --pid 0x002d

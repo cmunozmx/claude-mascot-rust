@@ -1,0 +1,54 @@
+[package]
+name = "claude-mascot-fw"
+version = "0.1.0"
+edition = "2021"
+
+# Dependency versions here mirror what wio_terminal 0.9.0 itself pins
+# (checked against its published Cargo.toml). If you're on a different
+# wio_terminal version, run `cargo update` and fix up whatever drifts —
+# see the "If it doesn't compile" section in ../README.md.
+[dependencies]
+panic-halt = "0.2"
+libm = "0.2"
+
+[dependencies.wio_terminal]
+version = "0.9"
+default-features = false
+features = ["rt", "usb", "wifi"]
+
+[dependencies.atsamd-hal]
+version = "0.21"
+default-features = false
+features = ["samd51p"]
+
+[dependencies.ili9341]
+version = "0.6"
+
+[dependencies.cortex-m]
+version = "0.7"
+features = ["critical-section-single-core"]
+
+[dependencies.cortex-m-rt]
+version = "0.7"
+
+[dependencies.embedded-graphics]
+version = "0.8.1"
+
+[dependencies.usb-device]
+version = "0.3"
+
+[dependencies.usbd-serial]
+version = "0.2"
+
+[dependencies.heapless]
+version = "0.8"
+
+[[bin]]
+name = "claude-mascot-fw"
+test = false
+bench = false
+
+[profile.release]
+lto = true
+opt-level = "s"
+debug = true
